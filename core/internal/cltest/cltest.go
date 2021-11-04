@@ -209,16 +209,20 @@ func NewEthConfirmer(t testing.TB, db *sqlx.DB, ethClient eth.Client, config evm
 type TestApplication struct {
 	t testing.TB
 	*chainlink.ChainlinkApplication
-	Logger   logger.Logger
-	Server   *httptest.Server
-	wsServer *httptest.Server
-	Started  bool
-	Backend  *backends.SimulatedBackend
-	Key      ethkey.KeyV2
+	Logger  logger.Logger
+	Server  *httptest.Server
+	Started bool
+	Backend *backends.SimulatedBackend
+	Key     ethkey.KeyV2
 }
 
-// NewWSServer returns a  new wsserver
-func NewWSServer(t *testing.T, msg string, callback func(data []byte)) (*httptest.Server, string) {
+// jsonrpcHandler is called with the method and request param(s).
+// respResult will be sent immediately. notifyResult is optional, and sent after a short delay.
+type jsonrpcHandler func(reqMethod string, reqParams gjson.Result) (respResult, notifyResult string)
+
+// NewWSServer starts a websocket server which invokes callback for each message received.
+// If chainID is set, then eth_chainId calls will be automatically handled.
+func NewWSServer(t *testing.T, chainID *big.Int, callback jsonrpcHandler) string {
 	upgrader := websocket.Upgrader{
 		CheckOrigin: func(r *http.Request) bool { return true },
 	}
@@ -228,19 +232,57 @@ func NewWSServer(t *testing.T, msg string, callback func(data []byte)) (*httptes
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		conn, err := upgrader.Upgrade(w, r, nil)
 		lggr.PanicIf(err, "Failed to upgrade WS connection")
+		defer conn.Close()
 		for {
 			_, data, err := conn.ReadMessage()
 			if err != nil {
+				if websocket.IsCloseError(err, websocket.CloseNormalClosure, websocket.CloseAbnormalClosure) {
+					lggr.Info("Closing")
+					return
+				}
+				lggr.Errorw("Failed to read message", "err", err)
+				return
+			}
+			lggr.Debugw("Received message", "wsmsg", string(data))
+			req := ParseJSON(t, bytes.NewReader(data))
+			if !req.IsObject() {
+				lggr.Errorw("Request must be object", "type", req.Type)
+				return
+			}
+			if e := req.Get("error"); e.Exists() {
+				lggr.Warnw("Received jsonrpc error message", "err", e)
 				break
 			}
-
-			if callback != nil {
-				callback(data)
+			m := req.Get("method")
+			if m.Type != gjson.String {
+				lggr.Errorw("method must be string", "type", m.Type)
+				return
 			}
 
+			var resp, notify string
+			if chainID != nil && m.String() == "eth_chainId" {
+				resp = `"0x` + chainID.Text(16) + `"`
+			} else {
+				resp, notify = callback(m.String(), req.Get("params"))
+			}
+			id := req.Get("id")
+			msg := fmt.Sprintf(`{"jsonrpc":"2.0","id":%s,"result":%s}`, id, resp)
+			lggr.Debugw("Sending message", "wsmsg", msg)
 			err = conn.WriteMessage(websocket.BinaryMessage, []byte(msg))
 			if err != nil {
-				break
+				lggr.Errorw("Failed to write message", "err", err)
+				return
+			}
+
+			if notify != "" {
+				time.Sleep(100 * time.Millisecond)
+				msg := fmt.Sprintf(`{"jsonrpc":"2.0","method":"eth_subscription","params":{"subscription":"0x00","result":%s}}`, notify)
+				lggr.Debugw("Sending message", "wsmsg", msg)
+				err = conn.WriteMessage(websocket.BinaryMessage, []byte(msg))
+				if err != nil {
+					lggr.Errorw("Failed to write message", "err", err)
+					return
+				}
 			}
 		}
 	})
@@ -251,7 +293,7 @@ func NewWSServer(t *testing.T, msg string, callback func(data []byte)) (*httptes
 	lggr.PanicIf(err, "Failed to parse url")
 	u.Scheme = "ws"
 
-	return server, u.String()
+	return u.String()
 }
 
 func NewTestGeneralConfig(t testing.TB) *configtest.TestGeneralConfig {
@@ -530,16 +572,10 @@ func (ta *TestApplication) Stop() error {
 	// cleans up only in test.
 	// FIXME: TestApplication probably needs to simply be removed
 	err := ta.ChainlinkApplication.StopIfStarted()
-	if err != nil {
-		return err
-	}
 	if ta.Server != nil {
 		ta.Server.Close()
 	}
-	if ta.wsServer != nil {
-		ta.wsServer.Close()
-	}
-	return nil
+	return err
 }
 
 func (ta *TestApplication) MustSeedNewSession() string {
@@ -1513,6 +1549,7 @@ func (b *Blocks) NewHead(number uint64) *eth.Head {
 		ParentHash: parent.Hash,
 		Parent:     parent,
 		Timestamp:  time.Unix(parent.Number+1, 0),
+		EVMChainID: utils.NewBig(&FixtureChainID),
 	}
 	return head
 }
@@ -1524,7 +1561,7 @@ func NewBlocks(t *testing.T, numHashes int) *Blocks {
 		hash := utils.NewHash()
 		hashes = append(hashes, hash)
 
-		heads[i] = &eth.Head{Hash: hash, Number: i, Timestamp: time.Unix(i, 0)}
+		heads[i] = &eth.Head{Hash: hash, Number: i, Timestamp: time.Unix(i, 0), EVMChainID: utils.NewBig(&FixtureChainID)}
 		if i > 0 {
 			parent := heads[i-1]
 			heads[i].Parent = parent
@@ -1565,6 +1602,7 @@ func (hb *HeadBuffer) Append(head *eth.Head) {
 		ParentHash: head.ParentHash,
 		Parent:     head.Parent,
 		Timestamp:  time.Unix(int64(len(hb.Heads)), 0),
+		EVMChainID: utils.New(head.EVMChainID),
 	}
 	hb.Heads = append(hb.Heads, cloned)
 }
