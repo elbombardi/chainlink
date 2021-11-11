@@ -25,6 +25,7 @@ import (
 	"github.com/smartcontractkit/chainlink/core/store/models"
 	"github.com/smartcontractkit/chainlink/core/utils"
 	"github.com/smartcontractkit/chainlink/core/utils/crypto"
+	"github.com/smartcontractkit/chainlink/core/web/auth"
 )
 
 type Resolver struct {
@@ -40,7 +41,7 @@ type createBridgeInput struct {
 
 // Bridge retrieves a bridges by name.
 func (r *Resolver) CreateBridge(ctx context.Context, args struct{ Input createBridgeInput }) (*CreateBridgePayloadResolver, error) {
-	if _, err := authenticateUser(ctx); err != nil {
+	if err := authenticateUser(ctx); err != nil {
 		return nil, err
 	}
 
@@ -92,7 +93,7 @@ type createFeedsManagerInput struct {
 }
 
 func (r *Resolver) CreateCSAKey(ctx context.Context) (*CreateCSAKeyPayloadResolver, error) {
-	if _, err := authenticateUser(ctx); err != nil {
+	if err := authenticateUser(ctx); err != nil {
 		return nil, err
 	}
 
@@ -111,7 +112,7 @@ func (r *Resolver) CreateCSAKey(ctx context.Context) (*CreateCSAKeyPayloadResolv
 func (r *Resolver) CreateFeedsManager(ctx context.Context, args struct {
 	Input *createFeedsManagerInput
 }) (*CreateFeedsManagerPayloadResolver, error) {
-	if _, err := authenticateUser(ctx); err != nil {
+	if err := authenticateUser(ctx); err != nil {
 		return nil, err
 	}
 
@@ -171,7 +172,7 @@ func (r *Resolver) UpdateBridge(ctx context.Context, args struct {
 	Name  string
 	Input updateBridgeInput
 }) (*UpdateBridgePayloadResolver, error) {
-	if _, err := authenticateUser(ctx); err != nil {
+	if err := authenticateUser(ctx); err != nil {
 		return nil, err
 	}
 
@@ -235,7 +236,7 @@ func (r *Resolver) UpdateFeedsManager(ctx context.Context, args struct {
 	ID    graphql.ID
 	Input *updateFeedsManagerInput
 }) (*UpdateFeedsManagerPayloadResolver, error) {
-	if _, err := authenticateUser(ctx); err != nil {
+	if err := authenticateUser(ctx); err != nil {
 		return nil, err
 	}
 
@@ -287,7 +288,7 @@ func (r *Resolver) UpdateFeedsManager(ctx context.Context, args struct {
 }
 
 func (r *Resolver) CreateOCRKeyBundle(ctx context.Context) (*CreateOCRKeyBundlePayloadResolver, error) {
-	if _, err := authenticateUser(ctx); err != nil {
+	if err := authenticateUser(ctx); err != nil {
 		return nil, err
 	}
 
@@ -302,7 +303,7 @@ func (r *Resolver) CreateOCRKeyBundle(ctx context.Context) (*CreateOCRKeyBundleP
 func (r *Resolver) DeleteOCRKeyBundle(ctx context.Context, args struct {
 	ID string
 }) (*DeleteOCRKeyBundlePayloadResolver, error) {
-	if _, err := authenticateUser(ctx); err != nil {
+	if err := authenticateUser(ctx); err != nil {
 		return nil, err
 	}
 
@@ -320,7 +321,7 @@ func (r *Resolver) DeleteOCRKeyBundle(ctx context.Context, args struct {
 func (r *Resolver) CreateNode(ctx context.Context, args struct {
 	Input *types.NewNode
 }) (*CreateNodePayloadResolver, error) {
-	if _, err := authenticateUser(ctx); err != nil {
+	if err := authenticateUser(ctx); err != nil {
 		return nil, err
 	}
 
@@ -335,7 +336,7 @@ func (r *Resolver) CreateNode(ctx context.Context, args struct {
 func (r *Resolver) DeleteNode(ctx context.Context, args struct {
 	ID int32
 }) (*DeleteNodePayloadResolver, error) {
-	if _, err := authenticateUser(ctx); err != nil {
+	if err := authenticateUser(ctx); err != nil {
 		return nil, err
 	}
 
@@ -363,7 +364,7 @@ func (r *Resolver) DeleteNode(ctx context.Context, args struct {
 func (r *Resolver) DeleteBridge(ctx context.Context, args struct {
 	Name string
 }) (*DeleteBridgePayloadResolver, error) {
-	if _, err := authenticateUser(ctx); err != nil {
+	if err := authenticateUser(ctx); err != nil {
 		return nil, err
 	}
 
@@ -398,7 +399,7 @@ func (r *Resolver) DeleteBridge(ctx context.Context, args struct {
 }
 
 func (r *Resolver) CreateP2PKey(ctx context.Context) (*CreateP2PKeyPayloadResolver, error) {
-	if _, err := authenticateUser(ctx); err != nil {
+	if err := authenticateUser(ctx); err != nil {
 		return nil, err
 	}
 
@@ -413,7 +414,7 @@ func (r *Resolver) CreateP2PKey(ctx context.Context) (*CreateP2PKeyPayloadResolv
 func (r *Resolver) DeleteP2PKey(ctx context.Context, args struct {
 	ID graphql.ID
 }) (*DeleteP2PKeyPayloadResolver, error) {
-	if _, err := authenticateUser(ctx); err != nil {
+	if err := authenticateUser(ctx); err != nil {
 		return nil, err
 	}
 
@@ -434,7 +435,7 @@ func (r *Resolver) DeleteP2PKey(ctx context.Context, args struct {
 }
 
 func (r *Resolver) CreateVRFKey(ctx context.Context) (*CreateVRFKeyPayloadResolver, error) {
-	if _, err := authenticateUser(ctx); err != nil {
+	if err := authenticateUser(ctx); err != nil {
 		return nil, err
 	}
 
@@ -449,7 +450,7 @@ func (r *Resolver) CreateVRFKey(ctx context.Context) (*CreateVRFKeyPayloadResolv
 func (r *Resolver) DeleteVRFKey(ctx context.Context, args struct {
 	ID graphql.ID
 }) (*DeleteVRFKeyPayloadResolver, error) {
-	if _, err := authenticateUser(ctx); err != nil {
+	if err := authenticateUser(ctx); err != nil {
 		return nil, err
 	}
 
@@ -467,9 +468,13 @@ func (r *Resolver) DeleteVRFKey(ctx context.Context, args struct {
 func (r *Resolver) UpdateUserPassword(ctx context.Context, args struct {
 	Input UpdatePasswordInput
 }) (*UpdatePasswordPayloadResolver, error) {
-	session, err := authenticateUser(ctx)
-	if err != nil {
+	if err := authenticateUser(ctx); err != nil {
 		return nil, err
+	}
+
+	session, ok := auth.GetGQLAuthenticatedUser(ctx)
+	if !ok {
+		return nil, errors.New("couldn't retrieve user session")
 	}
 
 	dbUser, err := r.App.SessionORM().FindUser()
@@ -478,7 +483,9 @@ func (r *Resolver) UpdateUserPassword(ctx context.Context, args struct {
 	}
 
 	if !utils.CheckPasswordHash(args.Input.OldPassword, dbUser.HashedPassword) {
-		return NewUpdatePasswordPayload(nil), nil
+		return NewUpdatePasswordPayload(nil, map[string]string{
+			"oldPassword": "old password does not match",
+		}), nil
 	}
 
 	if err = r.App.SessionORM().ClearNonCurrentSessions(session.SessionID); err != nil {
@@ -490,5 +497,5 @@ func (r *Resolver) UpdateUserPassword(ctx context.Context, args struct {
 		return nil, fmt.Errorf("failed to update current user password: %+v", err)
 	}
 
-	return NewUpdatePasswordPayload(session.User), nil
+	return NewUpdatePasswordPayload(session.User, nil), nil
 }
