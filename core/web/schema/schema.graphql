@@ -38,4 +38,5 @@ type Mutation {
     deleteVRFKey(id: ID!): DeleteVRFKeyPayload!
     updateBridge(name: String!, input: UpdateBridgeInput!): UpdateBridgePayload!
     updateFeedsManager(id: ID!, input: UpdateFeedsManagerInput!): UpdateFeedsManagerPayload!
+    updateUserPassword(input: UpdatePasswordInput!): UpdatePasswordPayload!
 }
