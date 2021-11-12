@@ -41,10 +41,10 @@ func newTestChainScopedConfig(t *testing.T) evmconfig.ChainScopedConfig {
 	return evmtest.NewChainScopedConfig(t, cfg)
 }
 
-func mustInsertUnstartedEthTx(t *testing.T, db *gorm.DB, fromAddress gethCommon.Address) {
+func mustInsertUnstartedEthTx(t *testing.T, borm bulletprooftxmanager.ORM, fromAddress gethCommon.Address) {
 	etx := cltest.NewEthTx(t, fromAddress)
 	etx.State = bulletprooftxmanager.EthTxUnstarted
-	require.NoError(t, db.Save(&etx).Error)
+	require.NoError(t, borm.InsertEthTx(&etx))
 }
 
 func newBroadcastLegacyEthTxAttempt(t *testing.T, etxID int64, gasPrice ...int64) bulletprooftxmanager.EthTxAttempt {

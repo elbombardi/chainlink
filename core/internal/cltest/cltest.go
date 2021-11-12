@@ -1692,6 +1692,6 @@ func NewBulletproofTxManagerORM(t *testing.T, db *sqlx.DB) bulletprooftxmanager.
 	return bulletprooftxmanager.NewORM(db, logger.TestLogger(t))
 }
 
-func MustExec(t, db *sqlx.DB, stmt string) {
-	require.NoError(t, utils.JustError(db.Exec(stmt)))
+func MustExec(t *testing.T, db *sqlx.DB, stmt string, args ...interface{}) {
+	require.NoError(t, utils.JustError(db.Exec(stmt, args...)))
 }
